@@ -6,10 +6,13 @@ using UnityEngine;
 [ExecuteInEditMode]
 public class AnimationSimulatorWindow : EditorWindow
 {
-    List<AnimatorState> allStates = new List<AnimatorState>();
+    List<AnimationClip> allClips = new List<AnimationClip>();
     Animator currentAnimator = null;
+    AnimationClip currentAnimClip = null;
 
-    private bool playAnim = false;
+    private float _lastEditorTime = 0f;
+    private bool _isSimulatingAnimation = false;
+    private bool _isPayingMode = false;
 
     [MenuItem("MyWindow/Animation Simulator")]
     public static void ShowWindow()
@@ -25,18 +28,18 @@ public class AnimationSimulatorWindow : EditorWindow
         {
             if (GUILayout.Button(animator.name))
             {
-                //Focus gameObject
+                currentAnimClip = null;
+                currentAnimator = null;
+
                 SceneView.FrameLastActiveSceneView();
                 Selection.activeGameObject = animator.gameObject;
                 SceneView.FrameLastActiveSceneView();
 
                 currentAnimator = animator;
-
-                playAnim = false;
+                currentAnimator.speed = 0.5f;
             }
         }
         
-        //Lister tout les states de l'animator selectionné
         GetStateAnimator();
     }
 
@@ -49,49 +52,88 @@ public class AnimationSimulatorWindow : EditorWindow
 
         GUILayout.Label("Animation of " + currentAnimator.name, EditorStyles.boldLabel);
 
-        for (int i = 0; i < allStates.Count; i++)
+        for (int i = 0; i < allClips.Count; i++)
         {
-            allStates.RemoveAt(i);
+            allClips.RemoveAt(i);
         }
 
         AnimatorController ac = currentAnimator.runtimeAnimatorController as AnimatorController;
-        AnimatorControllerLayer[] acLayers = ac.layers;
 
-        foreach (AnimatorControllerLayer animatorController in acLayers)
+        foreach(AnimationClip animationClip in ac.animationClips)
         {
-            ChildAnimatorState[] animatorStates = animatorController.stateMachine.states;
-            foreach (ChildAnimatorState childAnimator in animatorStates)
+            allClips.Add(animationClip);
+            if (GUILayout.Button($"{animationClip.name}"))
             {
-                allStates.Add(childAnimator.state);
-                if (GUILayout.Button($"{childAnimator.state.name}"))
-                {
-                    //Play animation selected
-                    currentAnimator.Play(childAnimator.state.name);
-                    playAnim = true;
-                    
-                }
+                if (_isPayingMode) return;
+
+                currentAnimClip = animationClip;
+                
+                StartAnimSimulation();
             }
+        }
+
+        GetInformationClip();
+    }
+
+    void GetInformationClip()
+    {
+        if (currentAnimClip == null) return;
+
+        DrawSeparatorLine();
+
+        GUILayout.Label("Informations of " + currentAnimClip.name, EditorStyles.boldLabel);
+
+        GUILayout.Label("Duration clip : " + currentAnimClip.length);
+        GUILayout.Label("Loop activated : " + currentAnimClip.isLooping);
+    }
+
+    private void OnEditorUpdate()
+    {
+        if (currentAnimator == null) return;
+
+        float animTime = Time.realtimeSinceStartup - _lastEditorTime;
+        if (animTime >= currentAnimClip.length)
+            StopAnimSimulation();
+        else
+        {
+            if (AnimationMode.InAnimationMode())
+                AnimationMode.SampleAnimationClip(Selection.activeGameObject, currentAnimClip, animTime);
         }
     }
 
-    private void Update()
+    public void StartAnimSimulation()
     {
-        //Play animation in edit mode
-        if(Selection.activeGameObject != null && playAnim)
-            currentAnimator.Update(Time.deltaTime);
+        AnimationMode.StartAnimationMode();
+        EditorApplication.update -= OnEditorUpdate;
+        EditorApplication.update += OnEditorUpdate;
+        _lastEditorTime = Time.realtimeSinceStartup;
+        _isSimulatingAnimation = true;
+    }
+    public void StopAnimSimulation()
+    {
+        AnimationMode.StopAnimationMode();
+        EditorApplication.update -= OnEditorUpdate;
+        _isSimulatingAnimation = false;
     }
 
-    static AnimationSimulatorWindow()
+    private void OnEnable()
     {
         EditorApplication.playModeStateChanged += LogPlayModeState;
     }
 
-    private static void LogPlayModeState(PlayModeStateChange state)
+    private void LogPlayModeState(PlayModeStateChange state)
     {
         if (state == PlayModeStateChange.EnteredPlayMode || state == PlayModeStateChange.ExitingPlayMode)
         {
-            AnimationMode.StopAnimationMode();
+            StopAnimSimulation();
+            _isPayingMode = !_isPayingMode;
         }
+    }
+
+    private void OnDisable()
+    {
+        EditorApplication.playModeStateChanged -= LogPlayModeState;
+        StopAnimSimulation();
     }
 
     private void DrawSeparatorLine()
