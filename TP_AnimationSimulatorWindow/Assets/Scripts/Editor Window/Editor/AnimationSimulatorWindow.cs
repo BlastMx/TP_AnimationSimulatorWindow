@@ -1,18 +1,27 @@
 ﻿using System.Collections.Generic;
 using UnityEditor;
+using UnityEditor.IMGUI.Controls;
 using UnityEditor.Animations;
 using UnityEngine;
+using UnityEngine.UI;
 
 [ExecuteInEditMode]
 public class AnimationSimulatorWindow : EditorWindow
 {
     List<AnimationClip> allClips = new List<AnimationClip>();
+
     Animator currentAnimator = null;
     AnimationClip currentAnimClip = null;
 
     private float _lastEditorTime = 0f;
     private bool _isSimulatingAnimation = false;
     private bool _isPayingMode = false;
+
+    private bool _firstSelectionAnimator = false;
+    private bool _firstSelectionAnimation = false;
+    private bool _firstSelectionAnimClip = false;
+
+    private float _sampleValueSlider = 0f;
 
     [MenuItem("MyWindow/Animation Simulator")]
     public static void ShowWindow()
@@ -28,19 +37,29 @@ public class AnimationSimulatorWindow : EditorWindow
         {
             if (GUILayout.Button(animator.name))
             {
-                currentAnimClip = null;
-                currentAnimator = null;
+                ResetAllInfo();
 
-                SceneView.FrameLastActiveSceneView();
-                Selection.activeGameObject = animator.gameObject;
-                SceneView.FrameLastActiveSceneView();
+                _firstSelectionAnimator = true;
 
                 currentAnimator = animator;
-                currentAnimator.speed = 0.5f;
+
             }
         }
-        
-        GetStateAnimator();
+
+        EditorGUILayout.Space();
+        EditorGUILayout.Space();
+
+        if (_firstSelectionAnimator && GUILayout.Button("Select this animator : " + currentAnimator.name))
+        {
+            SceneView.FrameLastActiveSceneView();
+            Selection.activeGameObject = currentAnimator.gameObject;
+            SceneView.FrameLastActiveSceneView();
+
+            _firstSelectionAnimation = true;
+        }
+
+        if(_firstSelectionAnimation)
+            GetStateAnimator();
     }
 
     void GetStateAnimator()
@@ -66,13 +85,27 @@ public class AnimationSimulatorWindow : EditorWindow
             {
                 if (_isPayingMode) return;
 
+                _firstSelectionAnimClip = true;
+
                 currentAnimClip = animationClip;
-                
-                StartAnimSimulation();
             }
         }
 
-        GetInformationClip();
+        if (_firstSelectionAnimClip)
+        {
+            if (currentAnimClip == null)
+                return;
+
+            EditorGUILayout.Space();
+            EditorGUILayout.Space();
+
+            if (GUILayout.Button("Play : " + currentAnimClip.name))
+                StartAnimSimulation();
+            else if (GUILayout.Button("Stop : " + currentAnimClip.name))
+                StopAnimSimulation();
+
+            GetInformationClip();
+        }
     }
 
     void GetInformationClip()
@@ -85,6 +118,14 @@ public class AnimationSimulatorWindow : EditorWindow
 
         GUILayout.Label("Duration clip : " + currentAnimClip.length);
         GUILayout.Label("Loop activated : " + currentAnimClip.isLooping);
+
+        _sampleValueSlider = GUILayout.HorizontalSlider(_sampleValueSlider, 0.0F, currentAnimClip.length);
+
+        EditorGUILayout.Space();
+        EditorGUILayout.Space();
+        GUILayout.Label("Sample animation : " + currentAnimClip.name, EditorStyles.boldLabel);
+        if(_sampleValueSlider > 0)
+            currentAnimClip.SampleAnimation(Selection.activeGameObject, _sampleValueSlider);
     }
 
     private void OnEditorUpdate()
@@ -134,6 +175,16 @@ public class AnimationSimulatorWindow : EditorWindow
     {
         EditorApplication.playModeStateChanged -= LogPlayModeState;
         StopAnimSimulation();
+    }
+
+    private void ResetAllInfo()
+    {
+        currentAnimClip = null;
+        currentAnimator = null;
+
+        _firstSelectionAnimation = false;
+
+        _sampleValueSlider = 0f;
     }
 
     private void DrawSeparatorLine()
